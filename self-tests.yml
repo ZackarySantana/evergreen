@@ -47,4 +47,4 @@ buildvariants:
       - name: my-task
     modules:
       - spruce
-      - logkeeper
+      - parsley
