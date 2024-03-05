@@ -4,9 +4,9 @@ modules:
     repo: spruce
     branch: main
     auto_update: true
-  - name: logkeeper
+  - name: parsley
     owner: evergreen-ci
-    repo: logkeeper
+    repo: parsley
     branch: main
     auto_update: true
 
@@ -20,7 +20,7 @@ functions:
       params:
         directory: evergreen
         revisions:
-          logkeeper: ${logkeeper_rev}
+          parsley: ${parsley_rev}
           spruce: ${spruce_rev}
 #######################################
 #                Tasks                #
