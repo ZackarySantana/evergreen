@@ -45,3 +45,6 @@ buildvariants:
       - ubuntu2204-large
     tasks:
       - name: my-task
+    modules:
+      - spruce
+      - logkeeper
