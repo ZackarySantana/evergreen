@@ -9,6 +9,16 @@ modules:
     repo: parsley
     branch: main
     auto_update: true
+  - name: fake
+    owner: evergreen-ci
+    repo: fake
+    branch: main
+    auto_update: true
+  - name: evergreen
+    owner: evergreen-ci
+    repo: evergreen
+    branch: main
+    auto_update: true
 
 #######################################
 #              Functions              #
@@ -22,6 +32,8 @@ functions:
         revisions:
           parsley: ${parsley_rev}
           spruce: ${spruce_rev}
+          fake: ${fake_rev}
+          evergreen: ${evergreen_rev}
 #######################################
 #                Tasks                #
 #######################################
@@ -42,7 +54,7 @@ buildvariants:
   - name: ubuntu2204
     display_name: ubunutu2204
     run_on:
-      - ubuntu2204-large
+      - ubuntu2204-small
     tasks:
       - name: my-task
     modules:
