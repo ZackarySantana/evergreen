@@ -11,3 +11,9 @@ linters:
     - misspell
     - unconvert
     - unused
+
+
+linters-settings:
+  govet:
+    disable:
+      - printf
