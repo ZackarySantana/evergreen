@@ -16,4 +16,4 @@ linters:
 linters-settings:
   govet:
     disable:
-      - printf
+      - printf # We disable printf check because we use a lot of dynamic formatting.
