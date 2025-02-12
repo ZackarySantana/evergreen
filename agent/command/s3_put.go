@@ -172,7 +172,7 @@ func (s3pc *s3put) ParseParams(params map[string]interface{}) error {
 func (s3pc *s3put) validate() error {
 	catcher := grip.NewSimpleCatcher()
 
-	if s3pc.TemporaryRoleARN != "" {
+	if s3pc.TemporaryRoleARN != "" || s3pc.TemporaryUseS3Route {
 		// When using the role ARN, there should be no provided AWS credentials.
 		catcher.NewWhen(s3pc.AwsKey != "", "AWS key must be empty when using role ARN")
 		catcher.NewWhen(s3pc.AwsSecret != "", "AWS secret must be empty when using role ARN")
@@ -329,10 +329,10 @@ func (s3pc *s3put) Execute(ctx context.Context, comm client.Communicator, logger
 			RoleARN: s3pc.TemporaryRoleARN,
 		})
 		if err != nil {
-			return errors.Wrap(err, "getting credentials for provided role arn")
+			return errors.Wrapf(err, "getting credentials for '%s' role arn", s3pc.TemporaryRoleARN)
 		}
 		if creds == nil {
-			return errors.New("nil credentials returned for provided role arn")
+			return errors.Errorf("nil credentials returned for '%s' role arn", s3pc.TemporaryRoleARN)
 		}
 		s3pc.AwsKey = creds.AccessKeyID
 		s3pc.AwsSecret = creds.SecretAccessKey
@@ -343,10 +343,10 @@ func (s3pc *s3put) Execute(ctx context.Context, comm client.Communicator, logger
 	if s3pc.TemporaryUseS3Route {
 		creds, err := comm.GetS3Credentials(ctx, s3pc.taskData, apimodels.S3CredentialsRequest{Bucket: s3pc.Bucket})
 		if err != nil {
-			return errors.Wrap(err, "getting temporary S3 credentials")
+			return errors.Wrapf(err, "getting credentials for '%s' bucket", s3pc.Bucket)
 		}
 		if creds == nil {
-			return errors.New("nil credentials returned for temporary S3 credentials")
+			return errors.Errorf("nil credentials returned for '%s' bucket", s3pc.Bucket)
 		}
 		s3pc.AwsKey = creds.AccessKeyID
 		s3pc.AwsSecret = creds.SecretAccessKey

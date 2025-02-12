@@ -80,6 +80,13 @@ type s3get struct {
 	// TODO (DEVPROD-13982): Upgrade this flag to RoleARN.
 	TemporaryRoleARN string `mapstructure:"temporary_role_arn" plugin:"expand"`
 
+	// TemporaryUseS3Route is not meant to be used in production. It is used for testing purposes
+	// relating to the DEVPROD-5553 project.
+	// This is a flag that should be set if the task should use the S3 agent route to generate
+	// credentials to make the S3 request.
+	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
+	TemporaryUseS3Route bool `mapstructure:"temporary_use_s3_route" plugin:"expand"`
+
 	skipMissing bool
 
 	bucket          pail.Bucket
@@ -117,7 +124,7 @@ func (c *s3get) ParseParams(params map[string]interface{}) error {
 func (c *s3get) validate() error {
 	catcher := grip.NewSimpleCatcher()
 
-	if c.TemporaryRoleARN != "" {
+	if c.TemporaryRoleARN != "" || c.TemporaryUseS3Route {
 		// When using the role ARN, there should be no provided AWS credentials.
 		catcher.NewWhen(c.AwsKey != "", "AWS key must be empty when using role ARN")
 		catcher.NewWhen(c.AwsSecret != "", "AWS secret must be empty when using role ARN")
@@ -185,8 +192,8 @@ func (c *s3get) Execute(ctx context.Context, comm client.Communicator, logger cl
 		attribute.Bool(s3GetInternalBucketAttribute, utility.StringSliceContains(conf.InternalBuckets, c.Bucket)),
 	)
 
+	taskData := client.TaskData{ID: conf.Task.Id, Secret: conf.Task.Secret}
 	if c.TemporaryRoleARN != "" {
-		taskData := client.TaskData{ID: conf.Task.Id, Secret: conf.Task.Secret}
 		creds, err := comm.AssumeRole(ctx, taskData, apimodels.AssumeRoleRequest{
 			RoleARN: c.TemporaryRoleARN,
 		})
@@ -195,6 +202,19 @@ func (c *s3get) Execute(ctx context.Context, comm client.Communicator, logger cl
 		}
 		if creds == nil {
 			return errors.Errorf("nil credentials returned for '%s' role arn", c.TemporaryRoleARN)
+		}
+		c.AwsKey = creds.AccessKeyID
+		c.AwsSecret = creds.SecretAccessKey
+		c.AwsSessionToken = creds.SessionToken
+	}
+
+	if c.TemporaryUseS3Route {
+		creds, err := comm.GetS3Credentials(ctx, taskData, apimodels.S3CredentialsRequest{Bucket: c.Bucket})
+		if err != nil {
+			return errors.Wrapf(err, "getting credentials for '%s' bucket", c.Bucket)
+		}
+		if creds == nil {
+			return errors.Errorf("nil credentials returned for '%s' bucket", c.Bucket)
 		}
 		c.AwsKey = creds.AccessKeyID
 		c.AwsSecret = creds.SecretAccessKey
