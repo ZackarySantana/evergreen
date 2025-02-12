@@ -85,9 +85,11 @@ type s3get struct {
 	// This is a flag that should be set if the task should use the S3 agent route to generate
 	// credentials to make the S3 request.
 	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
-	TemporaryUseS3Route bool `mapstructure:"temporary_use_s3_route" plugin:"expand"`
+	TemporaryUseS3Route string `mapstructure:"temporary_use_s3_route" plugin:"expand"`
 
 	skipMissing bool
+
+	temporaryUseS3Route bool
 
 	bucket          pail.Bucket
 	internalBuckets []string
@@ -124,7 +126,8 @@ func (c *s3get) ParseParams(params map[string]interface{}) error {
 func (c *s3get) validate() error {
 	catcher := grip.NewSimpleCatcher()
 
-	if c.TemporaryRoleARN != "" || c.TemporaryUseS3Route {
+	// TODO (DEVPROD-13986): Remove the temporary use s3 route check.
+	if c.TemporaryRoleARN != "" || c.TemporaryUseS3Route != "" {
 		// When using the role ARN, there should be no provided AWS credentials.
 		catcher.NewWhen(c.AwsKey != "", "AWS key must be empty when using role ARN")
 		catcher.NewWhen(c.AwsSecret != "", "AWS secret must be empty when using role ARN")
@@ -158,6 +161,13 @@ func (c *s3get) expandParams(conf *internal.TaskConfig) error {
 		c.skipMissing, err = strconv.ParseBool(c.Optional)
 		if err != nil {
 			return errors.Wrap(err, "parsing optional parameter as a boolean")
+		}
+	}
+
+	if c.TemporaryUseS3Route != "" {
+		c.temporaryUseS3Route, err = strconv.ParseBool(c.TemporaryUseS3Route)
+		if err != nil {
+			return errors.Wrap(err, "parsing temporary_use_s3_route parameter as a boolean")
 		}
 	}
 
@@ -208,7 +218,7 @@ func (c *s3get) Execute(ctx context.Context, comm client.Communicator, logger cl
 		c.AwsSessionToken = creds.SessionToken
 	}
 
-	if c.TemporaryUseS3Route {
+	if c.temporaryUseS3Route {
 		creds, err := comm.GetS3Credentials(ctx, taskData, apimodels.S3CredentialsRequest{Bucket: c.Bucket})
 		if err != nil {
 			return errors.Wrapf(err, "getting credentials for '%s' bucket", c.Bucket)

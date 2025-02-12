@@ -131,7 +131,7 @@ type s3put struct {
 	// This is a flag that should be set if the task should use the S3 agent route to generate
 	// credentials to make the S3 request.
 	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
-	TemporaryUseS3Route bool `mapstructure:"temporary_use_s3_route" plugin:"expand"`
+	TemporaryUseS3Route string `mapstructure:"temporary_use_s3_route" plugin:"expand"`
 
 	// workDir sets the working directory relative to which s3put should look for files to upload.
 	// workDir will be empty if an absolute path is provided to the file.
@@ -141,6 +141,8 @@ type s3put struct {
 	skipExistingBool bool
 	isPatchable      bool
 	isPatchOnly      bool
+
+	temporaryUseS3Route bool
 
 	bucket          pail.Bucket
 	internalBuckets []string
@@ -172,7 +174,8 @@ func (s3pc *s3put) ParseParams(params map[string]interface{}) error {
 func (s3pc *s3put) validate() error {
 	catcher := grip.NewSimpleCatcher()
 
-	if s3pc.TemporaryRoleARN != "" || s3pc.TemporaryUseS3Route {
+	// TODO (DEVPROD-13986): Remove the temporary use s3 route check.
+	if s3pc.TemporaryRoleARN != "" || s3pc.TemporaryUseS3Route != "" {
 		// When using the role ARN, there should be no provided AWS credentials.
 		catcher.NewWhen(s3pc.AwsKey != "", "AWS key must be empty when using role ARN")
 		catcher.NewWhen(s3pc.AwsSecret != "", "AWS secret must be empty when using role ARN")
@@ -245,6 +248,13 @@ func (s3pc *s3put) expandParams(conf *internal.TaskConfig) error {
 		s3pc.skipMissing, err = strconv.ParseBool(s3pc.Optional)
 		if err != nil {
 			return errors.Wrap(err, "parsing optional parameter as a boolean")
+		}
+	}
+
+	if s3pc.TemporaryUseS3Route != "" {
+		s3pc.temporaryUseS3Route, err = strconv.ParseBool(s3pc.TemporaryUseS3Route)
+		if err != nil {
+			return errors.Wrap(err, "parsing temporary_use_s3_route parameter as a boolean")
 		}
 	}
 
@@ -340,7 +350,7 @@ func (s3pc *s3put) Execute(ctx context.Context, comm client.Communicator, logger
 	}
 
 	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
-	if s3pc.TemporaryUseS3Route {
+	if s3pc.temporaryUseS3Route {
 		creds, err := comm.GetS3Credentials(ctx, s3pc.taskData, apimodels.S3CredentialsRequest{Bucket: s3pc.Bucket})
 		if err != nil {
 			return errors.Wrapf(err, "getting credentials for '%s' bucket", s3pc.Bucket)
