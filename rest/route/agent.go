@@ -1808,9 +1808,26 @@ func (h *awsS3Credentials) Run(ctx context.Context) gimlet.Responder {
 		})
 	}
 
+	grip.Info(message.Fields{
+		"message": "zackary-message",
+		"stage":   "1",
+		"task_id": h.taskID,
+		"bucket":  h.body.Bucket,
+	})
+
 	if h.callerARN == "" {
 		h.callerARN, err = h.stsManager.GetCallerIdentityARN(ctx)
+		grip.Info(message.Fields{
+			"message":    "zackary-message",
+			"stage":      "2",
+			"task_id":    h.taskID,
+			"caller_arn": h.callerARN,
+		})
 		if err != nil {
+			grip.Info(message.WrapError(err, message.Fields{
+				"message": "zackary-message",
+				"stage":   "2-error",
+			}))
 			return gimlet.MakeJSONErrorResponder(errors.Wrapf(err, "getting caller identity for task '%s'", h.taskID))
 		}
 	}
@@ -1827,6 +1844,12 @@ func (h *awsS3Credentials) Run(ctx context.Context) gimlet.Responder {
 	}
 	policyJSON, err := json.Marshal(sessionPolicy)
 	if err != nil {
+		grip.Info(message.Fields{
+			"message": "zackary-message",
+			"stage":   "3-error",
+			"task_id": h.taskID,
+			"error":   err.Error(),
+		})
 		return gimlet.MakeJSONInternalErrorResponder(errors.Wrapf(err, "marshalling session policy for task '%s'", h.taskID))
 	}
 	creds, err := h.stsManager.AssumeRole(ctx, h.taskID, cloud.AssumeRoleOptions{
@@ -1834,8 +1857,19 @@ func (h *awsS3Credentials) Run(ctx context.Context) gimlet.Responder {
 		Policy:  aws.String(string(policyJSON)),
 	})
 	if err != nil {
+		grip.Info(message.WrapError(err, message.Fields{
+			"message": "zackary-message",
+			"stage":   "4-error",
+			"task_id": h.taskID,
+		}))
 		return gimlet.MakeJSONErrorResponder(errors.Wrapf(err, "creating credentials for s3 access for task '%s'", h.taskID))
 	}
+
+	grip.Info(message.Fields{
+		"message": "zackary-message",
+		"stage":   "5",
+		"task_id": h.taskID,
+	})
 
 	return gimlet.NewJSONResponse(apimodels.AWSCredentials{
 		AccessKeyID:     creds.AccessKeyID,
