@@ -1025,3 +1025,23 @@ func (c *baseCommunicator) AssumeRole(ctx context.Context, td TaskData, request 
 	}
 	return &creds, nil
 }
+
+func (c *baseCommunicator) GetS3Credentials(ctx context.Context, td TaskData, request apimodels.S3CredentialsRequest) (*apimodels.AWSCredentials, error) {
+	info := requestInfo{
+		method:   http.MethodPost,
+		taskData: &td,
+	}
+	info.setTaskPathSuffix("aws/s3_credentials")
+	resp, err := c.retryRequest(ctx, info, &request)
+	if err != nil {
+		return nil, util.RespError(resp, errors.Wrap(err, "getting s3 credentials").Error())
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, util.RespError(resp, "trouble getting s3 credentials")
+	}
+	var creds apimodels.AWSCredentials
+	if err := utility.ReadJSON(resp.Body, &creds); err != nil {
+		return nil, errors.Wrap(err, "reading s3 credentials response")
+	}
+	return &creds, nil
+}

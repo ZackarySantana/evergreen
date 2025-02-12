@@ -72,6 +72,7 @@ type Mock struct {
 	CreateGitHubDynamicAccessTokenFail   bool
 	RevokeGitHubDynamicAccessTokenFail   bool
 	AssumeRoleResponse                   *apimodels.AWSCredentials
+	S3CredentialsResponse                *apimodels.AWSCredentials
 
 	CedarGRPCConn *grpc.ClientConn
 
@@ -609,4 +610,8 @@ func (c *Mock) UpsertCheckRun(ctx context.Context, td TaskData, checkRunOutput a
 
 func (c *Mock) AssumeRole(ctx context.Context, td TaskData, request apimodels.AssumeRoleRequest) (*apimodels.AWSCredentials, error) {
 	return c.AssumeRoleResponse, nil
+}
+
+func (c *Mock) GetS3Credentials(ctx context.Context, td TaskData, request apimodels.S3CredentialsRequest) (*apimodels.AWSCredentials, error) {
+	return c.S3CredentialsResponse, nil
 }

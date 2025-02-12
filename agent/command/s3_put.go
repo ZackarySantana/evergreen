@@ -126,6 +126,13 @@ type s3put struct {
 	// TODO (DEVPROD-13982): Upgrade this flag to RoleARN.
 	TemporaryRoleARN string `mapstructure:"temporary_role_arn" plugin:"expand"`
 
+	// TemporaryUseS3Route is not meant to be used in production. It is used for testing purposes
+	// relating to the DEVPROD-5553 project.
+	// This is a flag that should be set if the task should use the S3 agent route to generate
+	// credentials to make the S3 request.
+	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
+	TemporaryUseS3Route bool `mapstructure:"temporary_use_s3_route" plugin:"expand"`
+
 	// workDir sets the working directory relative to which s3put should look for files to upload.
 	// workDir will be empty if an absolute path is provided to the file.
 	workDir          string
@@ -326,6 +333,20 @@ func (s3pc *s3put) Execute(ctx context.Context, comm client.Communicator, logger
 		}
 		if creds == nil {
 			return errors.New("nil credentials returned for provided role arn")
+		}
+		s3pc.AwsKey = creds.AccessKeyID
+		s3pc.AwsSecret = creds.SecretAccessKey
+		s3pc.AwsSessionToken = creds.SessionToken
+	}
+
+	// TODO (DEVPROD-13986): Remove this and automatically call the S3 route for internal buckets.
+	if s3pc.TemporaryUseS3Route {
+		creds, err := comm.GetS3Credentials(ctx, s3pc.taskData, apimodels.S3CredentialsRequest{Bucket: s3pc.Bucket})
+		if err != nil {
+			return errors.Wrap(err, "getting temporary S3 credentials")
+		}
+		if creds == nil {
+			return errors.New("nil credentials returned for temporary S3 credentials")
 		}
 		s3pc.AwsKey = creds.AccessKeyID
 		s3pc.AwsSecret = creds.SecretAccessKey
