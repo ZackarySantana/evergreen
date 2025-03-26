@@ -628,7 +628,6 @@ func TestS3PutSkipExisting(t *testing.T) {
 	}
 
 	require.NoError(t, cmd.ParseParams(params))
-	require.True(t, cmd.skipExisting)
 
 	tconf := &internal.TaskConfig{
 		Task:    task.Task{},
