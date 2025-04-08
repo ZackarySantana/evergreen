@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/evergreen-ci/evergreen/db"
-	"github.com/evergreen-ci/evergreen/db/mgo/bson"
 	"github.com/mongodb/anser/bsonutil"
 	adb "github.com/mongodb/anser/db"
 	"github.com/pkg/errors"
+	"go.mongodb.org/mongo-driver/bson"
 )
 
 const Collection = "pod_definitions"
@@ -38,7 +38,7 @@ func FindOne(ctx context.Context, q db.Q) (*PodDefinition, error) {
 
 // UpsertOne updates an existing pod definition if it exists based on the
 // query; otherwise, it inserts a new pod definition.
-func UpsertOne(ctx context.Context, query, update any) (*adb.ChangeInfo, error) {
+func UpsertOne(ctx context.Context, query bson.M, update any) (*adb.ChangeInfo, error) {
 	return db.UpsertContext(ctx, Collection, query, update)
 }
 

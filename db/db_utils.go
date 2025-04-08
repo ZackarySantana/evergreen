@@ -357,7 +357,7 @@ func Upsert(collection string, query any, update any) (*db.ChangeInfo, error) {
 }
 
 // UpsertContext run the specified update against the collection as an upsert operation.
-func UpsertContext(ctx context.Context, collection string, query any, update any) (*db.ChangeInfo, error) {
+func UpsertContext(ctx context.Context, collection string, query bson.M, update any) (*db.ChangeInfo, error) {
 	res, err := evergreen.GetEnvironment().DB().Collection(collection).UpdateOne(ctx,
 		query,
 		update,
