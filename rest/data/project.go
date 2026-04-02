@@ -63,9 +63,7 @@ func CreateProject(ctx context.Context, env evergreen.Environment, projectRef *m
 		}
 	}
 	if projectRef.Id == "" {
-		if projectRef.Id == "" {
-			projectRef.Id = mgobson.NewObjectId().Hex()
-		}
+		projectRef.Id = mgobson.NewObjectId().Hex()
 	}
 	if err := ValidateProjectName(ctx, projectRef.Id); err != nil {
 		return false, err
@@ -85,7 +83,7 @@ func CreateProject(ctx context.Context, env evergreen.Environment, projectRef *m
 
 	_, err = model.SetTracksPushEvents(ctx, projectRef)
 	if err != nil {
-		grip.Debug(message.WrapError(err, message.Fields{
+		grip.Debug(ctx, message.WrapError(err, message.Fields{
 			"message":            "error setting project tracks push events",
 			"project_id":         projectRef.Id,
 			"project_identifier": projectRef.Identifier,
@@ -102,7 +100,7 @@ func CreateProject(ctx context.Context, env evergreen.Environment, projectRef *m
 	}
 
 	err = model.LogProjectAdded(ctx, projectRef.Id, u.DisplayName())
-	grip.Error(message.WrapError(err, message.Fields{
+	grip.Error(ctx, message.WrapError(err, message.Fields{
 		"message":            "problem logging project added",
 		"project_id":         projectRef.Id,
 		"project_identifier": projectRef.Identifier,
@@ -250,7 +248,7 @@ func UpdateProjectVars(ctx context.Context, projectId string, varsModel *restMod
 func GetProjectEventLog(ctx context.Context, project string, before time.Time, n int) ([]restModel.APIProjectEvent, error) {
 	id, err := model.GetIdForProject(ctx, project)
 	if err != nil {
-		grip.Debug(message.WrapError(err, message.Fields{
+		grip.Debug(ctx, message.WrapError(err, message.Fields{
 			"func":    "GetProjectEventLog",
 			"message": "error getting id for project",
 			"project": project,

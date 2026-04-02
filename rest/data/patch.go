@@ -128,7 +128,7 @@ func SetPatchActivated(ctx context.Context, patchId string, user string, activat
 			return errors.Wrapf(err, "finalizing patch '%s'", p.Id.Hex())
 		}
 		if requester == evergreen.PatchVersionRequester {
-			grip.Info(message.Fields{
+			grip.Info(ctx, message.Fields{
 				"operation":     "patch creation",
 				"message":       "finalized patch",
 				"from":          "rest route",
@@ -177,7 +177,7 @@ func SetMergeQueueGitRefNotFound(ctx context.Context, versionId string) error {
 		},
 	}
 
-	return patch.UpdateOne(ctx, patch.ById(p.Id), update)
+	return patch.UpdateOne(ctx, mgobson.M{patch.IdKey: p.Id}, update)
 }
 
 // FindPatchesByUser finds patches for the input user as ordered by creation time

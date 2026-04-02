@@ -58,8 +58,11 @@
     },
     {
       "_id": "okta_service",
+      "audience": "audience",
       "client_id": "service-id",
-      "client_secret": "service-secret"
+      "client_secret": "service-secret",
+      "issuer": "issuer",
+      "scopes": ["scope1", "scope2"]
     },
     {
       "_id": "global",
@@ -267,8 +270,7 @@
       "uiv2_url": "http://localhost:3000",
       "parsley_url": "http://localhost:4173",
       "beta_features": {
-        "spruce_waterfall_enabled": true,
-        "parsley_ai_enabled": true
+        "spruce_waterfall_enabled": true
       },
       "cache_templates": false,
       "csrf_key": "",

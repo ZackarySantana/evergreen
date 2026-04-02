@@ -89,6 +89,7 @@ type Task {
   errors: [String!]
   estimatedStart: Duration
   execution: Int!
+  executionSteps: [TaskExecutionStep!]
   executionTasks: [String!]
   executionTasksFull: [Task!]
   expectedDuration: Duration
@@ -107,9 +108,23 @@ type Task {
   latestExecution: Int!
   logs: TaskLogLinks!
   minQueuePosition: Int!
+  """
+  nextTask may be in-progress
+  """
+  nextTask: Task
+  nextTaskCompleted: Task
+  nextTaskFailing: Task
+  nextTaskPassing: Task
   order: Int!
   patch: Patch
   patchNumber: Int
+  """
+  prevTask may be in-progress
+  """
+  prevTask: Task
+  prevTaskCompleted: Task
+  prevTaskFailing: Task
+  prevTaskPassing: Task
   priority: Int
   project: Project
   projectId: String!
@@ -140,6 +155,21 @@ type Task {
   timeTaken: Duration
   totalTestCount: Int!
   versionMetadata: Version!
+}
+
+"""
+TaskExecutionStep represents a single step in a task's execution plan.
+"""
+type TaskExecutionStep {
+  blockType: String!
+  commandName: String!
+  displayName: String!
+  functionName: String!
+  isFunction: Boolean!
+  """
+  stepNumber is intentionally a string because step numbers are formatted in decimal notation, i.e. '2.1'
+  """
+  stepNumber: String!
 }
 
 type AbortInfo {
@@ -231,6 +261,12 @@ type File {
   name: String!
   urlParsley: String
   visibility: String!
+  associatedLinks: [AssociatedLink!]!
+}
+
+type AssociatedLink {
+  name: String!
+  link: String!
 }
 
 """
@@ -298,6 +334,7 @@ type Cost {
   onDemandEC2Cost: Float
   adjustedEC2Cost: Float
   s3ArtifactPutCost: Float
+  s3LogPutCost: Float
 }
 
 input QuarantineTestInput {

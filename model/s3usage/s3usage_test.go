@@ -12,49 +12,62 @@ func TestS3Usage(t *testing.T) {
 		s3Usage := S3Usage{}
 		assert.True(t, s3Usage.IsZero())
 
-		s3Usage.UserFiles.PutRequests = 10
+		s3Usage.Artifacts.PutRequests = 10
 		assert.False(t, s3Usage.IsZero())
 
 		s3Usage = S3Usage{}
-		s3Usage.UserFiles.UploadBytes = 100
+		s3Usage.Artifacts.UploadBytes = 100
 		assert.False(t, s3Usage.IsZero())
 
 		s3Usage = S3Usage{}
-		s3Usage.UserFiles.FileCount = 1
+		s3Usage.Artifacts.Count = 1
 		assert.False(t, s3Usage.IsZero())
 
 		s3Usage = S3Usage{}
-		s3Usage.NumPutRequests = 5
+		s3Usage.Logs.PutRequests = 5
+		assert.False(t, s3Usage.IsZero())
+
+		s3Usage = S3Usage{}
+		s3Usage.Logs.UploadBytes = 100
 		assert.False(t, s3Usage.IsZero())
 
 	})
 
-	t.Run("IncrementUserFiles", func(t *testing.T) {
+	t.Run("IncrementArtifacts", func(t *testing.T) {
 		s3Usage := S3Usage{}
-		assert.Equal(t, 0, s3Usage.UserFiles.PutRequests)
-		assert.Equal(t, int64(0), s3Usage.UserFiles.UploadBytes)
-		assert.Equal(t, 0, s3Usage.UserFiles.FileCount)
+		assert.Equal(t, 0, s3Usage.Artifacts.PutRequests)
+		assert.Equal(t, int64(0), s3Usage.Artifacts.UploadBytes)
+		assert.Equal(t, 0, s3Usage.Artifacts.Count)
+		assert.Equal(t, 0, s3Usage.Artifacts.ArtifactWithMaxPutRequests)
+		assert.Equal(t, 0, s3Usage.Artifacts.ArtifactWithMinPutRequests)
 
-		s3Usage.IncrementUserFiles(5, 1024, 2)
-		assert.Equal(t, 5, s3Usage.UserFiles.PutRequests)
-		assert.Equal(t, int64(1024), s3Usage.UserFiles.UploadBytes)
-		assert.Equal(t, 2, s3Usage.UserFiles.FileCount)
+		s3Usage.IncrementArtifacts(5, 1024, 2, 3, 2)
+		assert.Equal(t, 5, s3Usage.Artifacts.PutRequests)
+		assert.Equal(t, int64(1024), s3Usage.Artifacts.UploadBytes)
+		assert.Equal(t, 2, s3Usage.Artifacts.Count)
+		assert.Equal(t, 3, s3Usage.Artifacts.ArtifactWithMaxPutRequests)
+		assert.Equal(t, 2, s3Usage.Artifacts.ArtifactWithMinPutRequests)
 
-		s3Usage.IncrementUserFiles(10, 2048, 3)
-		assert.Equal(t, 15, s3Usage.UserFiles.PutRequests)
-		assert.Equal(t, int64(3072), s3Usage.UserFiles.UploadBytes)
-		assert.Equal(t, 5, s3Usage.UserFiles.FileCount)
+		s3Usage.IncrementArtifacts(10, 2048, 3, 8, 1)
+		assert.Equal(t, 15, s3Usage.Artifacts.PutRequests)
+		assert.Equal(t, int64(3072), s3Usage.Artifacts.UploadBytes)
+		assert.Equal(t, 5, s3Usage.Artifacts.Count)
+		assert.Equal(t, 8, s3Usage.Artifacts.ArtifactWithMaxPutRequests)
+		assert.Equal(t, 1, s3Usage.Artifacts.ArtifactWithMinPutRequests)
 	})
 
-	t.Run("IncrementPutRequests", func(t *testing.T) {
+	t.Run("IncrementLogs", func(t *testing.T) {
 		s3Usage := S3Usage{}
-		assert.Equal(t, 0, s3Usage.NumPutRequests)
+		assert.Equal(t, 0, s3Usage.Logs.PutRequests)
+		assert.Equal(t, int64(0), s3Usage.Logs.UploadBytes)
 
-		s3Usage.IncrementPutRequests(5)
-		assert.Equal(t, 5, s3Usage.NumPutRequests)
+		s3Usage.IncrementLogs(5, 1024)
+		assert.Equal(t, 5, s3Usage.Logs.PutRequests)
+		assert.Equal(t, int64(1024), s3Usage.Logs.UploadBytes)
 
-		s3Usage.IncrementPutRequests(10)
-		assert.Equal(t, 15, s3Usage.NumPutRequests)
+		s3Usage.IncrementLogs(10, 2048)
+		assert.Equal(t, 15, s3Usage.Logs.PutRequests)
+		assert.Equal(t, int64(3072), s3Usage.Logs.UploadBytes)
 	})
 
 	t.Run("NilReceiverIsZero", func(t *testing.T) {
@@ -167,6 +180,11 @@ func TestCalculateS3PutCostWithConfig(t *testing.T) {
 		assert.Equal(t, 0.0, cost)
 	})
 
+	t.Run("WithNegativePutRequests", func(t *testing.T) {
+		cost := CalculateS3PutCostWithConfig(-5, validConfig)
+		assert.Equal(t, 0.0, cost)
+	})
+
 	t.Run("WithInvalidDiscount", func(t *testing.T) {
 		invalidConfig := &evergreen.CostConfig{
 			S3Cost: evergreen.S3CostConfig{
@@ -179,8 +197,89 @@ func TestCalculateS3PutCostWithConfig(t *testing.T) {
 		assert.Equal(t, 0.0, cost)
 	})
 
-	t.Run("WithNegativePutRequests", func(t *testing.T) {
-		cost := CalculateS3PutCostWithConfig(-5, validConfig)
+}
+
+func TestCalculateS3StorageCostWithConfig(t *testing.T) {
+	validConfig := &evergreen.CostConfig{
+		S3Cost: evergreen.S3CostConfig{
+			Storage: evergreen.S3StorageCostConfig{
+				StandardStorageCostDiscount: 0.37,
+				IAStorageCostDiscount:       0.312,
+				ArchiveStorageCostDiscount:  0.265,
+			},
+		},
+	}
+
+	const GB = 1024 * 1024 * 1024
+
+	t.Run("DefaultArtifacts365Days", func(t *testing.T) {
+		// ExpirationDays=365: Standard=30, IA=60, Archive=275
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 365, validConfig)
+		assert.Greater(t, cost, 0.0)
+		// Verify tier breakdown manually:
+		// Standard: 30 * (0.023/GB/30) * (1-0.37) = 0.023 * 0.63
+		// IA:       60 * (0.0125/GB/30) * (1-0.312) = 2 * 0.0125 * 0.688
+		// Archive:  275 * (0.004/GB/30) * (1-0.265)
+		standard := 30.0 * (0.023 / float64(GB) / 30.0) * (1 - 0.37)
+		ia := 60.0 * (0.0125 / float64(GB) / 30.0) * (1 - 0.312)
+		archive := 275.0 * (0.004 / float64(GB) / 30.0) * (1 - 0.265)
+		expected := float64(GB) * (standard + ia + archive)
+		assert.InDelta(t, expected, cost, 0.000001)
+	})
+
+	t.Run("MongoDBMongoArtifacts90Days", func(t *testing.T) {
+		// ExpirationDays=90: Standard=30, IA=60, Archive=0
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 90, validConfig)
+		standard := 30.0 * (0.023 / float64(GB) / 30.0) * (1 - 0.37)
+		ia := 60.0 * (0.0125 / float64(GB) / 30.0) * (1 - 0.312)
+		expected := float64(GB) * (standard + ia)
+		assert.InDelta(t, expected, cost, 0.000001)
+	})
+
+	t.Run("MongoSyncArtifacts180Days", func(t *testing.T) {
+		// ExpirationDays=180: Standard=30, IA=60, Archive=90
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 180, validConfig)
+		standard := 30.0 * (0.023 / float64(GB) / 30.0) * (1 - 0.37)
+		ia := 60.0 * (0.0125 / float64(GB) / 30.0) * (1 - 0.312)
+		archive := 90.0 * (0.004 / float64(GB) / 30.0) * (1 - 0.265)
+		expected := float64(GB) * (standard + ia + archive)
+		assert.InDelta(t, expected, cost, 0.000001)
+	})
+
+	t.Run("DefaultLog60Days", func(t *testing.T) {
+		// ExpirationDays=60: Standard=30, IA=30, Archive=0
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 60, validConfig)
+		standard := 30.0 * (0.023 / float64(GB) / 30.0) * (1 - 0.37)
+		ia := 30.0 * (0.0125 / float64(GB) / 30.0) * (1 - 0.312)
+		expected := float64(GB) * (standard + ia)
+		assert.InDelta(t, expected, cost, 0.000001)
+	})
+
+	t.Run("FailedLog180Days", func(t *testing.T) {
+		// ExpirationDays=180: Standard=30, IA=60, Archive=90
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 180, validConfig)
+		assert.Greater(t, cost, 0.0)
+	})
+
+	t.Run("LongRetentionLog365Days", func(t *testing.T) {
+		// ExpirationDays=365: Standard=30, IA=60, Archive=275
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 365, validConfig)
+		assert.Greater(t, cost, 0.0)
+	})
+
+	t.Run("ZeroBytes", func(t *testing.T) {
+		cost := CalculateS3StorageCostWithConfig(t.Context(), 0, 365, validConfig)
 		assert.Equal(t, 0.0, cost)
 	})
+
+	t.Run("ZeroExpirationDays", func(t *testing.T) {
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 0, validConfig)
+		assert.Equal(t, 0.0, cost)
+	})
+
+	t.Run("NilConfig", func(t *testing.T) {
+		cost := CalculateS3StorageCostWithConfig(t.Context(), GB, 365, nil)
+		assert.Equal(t, 0.0, cost)
+	})
+
 }

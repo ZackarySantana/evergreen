@@ -1048,13 +1048,13 @@ func TestReportS3Usage(t *testing.T) {
 		handler := makeReportS3Usage().(*reportS3UsageHandler)
 		handler.taskID = "nonexistent"
 		handler.s3Usage = s3usage.S3Usage{
-			UserFiles: s3usage.UserFilesMetrics{PutRequests: 10},
+			Artifacts: s3usage.ArtifactMetrics{S3UploadMetrics: s3usage.S3UploadMetrics{PutRequests: 10}},
 		}
 		resp := handler.Run(ctx)
 		assert.Equal(t, http.StatusNotFound, resp.Status())
 	})
 
-	t.Run("SuccessfullySavesUsage", func(t *testing.T) {
+	t.Run("SavesArtifactAndLogUsage", func(t *testing.T) {
 		require.NoError(t, db.Clear(task.Collection))
 		tk := task.Task{Id: "t1", Status: evergreen.TaskStarted}
 		require.NoError(t, tk.Insert(ctx))
@@ -1062,10 +1062,16 @@ func TestReportS3Usage(t *testing.T) {
 		handler := makeReportS3Usage().(*reportS3UsageHandler)
 		handler.taskID = "t1"
 		handler.s3Usage = s3usage.S3Usage{
-			UserFiles: s3usage.UserFilesMetrics{
-				PutRequests: 50,
-				UploadBytes: 2048,
-				FileCount:   5,
+			Artifacts: s3usage.ArtifactMetrics{
+				S3UploadMetrics: s3usage.S3UploadMetrics{
+					PutRequests: 50,
+					UploadBytes: 2048,
+				},
+				Count: 5,
+			},
+			Logs: s3usage.S3UploadMetrics{
+				PutRequests: 10,
+				UploadBytes: 4096,
 			},
 		}
 		resp := handler.Run(ctx)
@@ -1074,8 +1080,34 @@ func TestReportS3Usage(t *testing.T) {
 		dbTask, err := task.FindOneId(ctx, "t1")
 		require.NoError(t, err)
 		require.NotNil(t, dbTask)
-		assert.Equal(t, 50, dbTask.S3Usage.UserFiles.PutRequests)
-		assert.Equal(t, int64(2048), dbTask.S3Usage.UserFiles.UploadBytes)
-		assert.Equal(t, 5, dbTask.S3Usage.UserFiles.FileCount)
+		assert.Equal(t, 50, dbTask.S3Usage.Artifacts.PutRequests)
+		assert.Equal(t, int64(2048), dbTask.S3Usage.Artifacts.UploadBytes)
+		assert.Equal(t, 5, dbTask.S3Usage.Artifacts.Count)
+		assert.Equal(t, 10, dbTask.S3Usage.Logs.PutRequests)
+		assert.Equal(t, int64(4096), dbTask.S3Usage.Logs.UploadBytes)
+	})
+
+	t.Run("SavesLogOnlyUsage", func(t *testing.T) {
+		require.NoError(t, db.Clear(task.Collection))
+		tk := task.Task{Id: "t2", Status: evergreen.TaskStarted}
+		require.NoError(t, tk.Insert(ctx))
+
+		handler := makeReportS3Usage().(*reportS3UsageHandler)
+		handler.taskID = "t2"
+		handler.s3Usage = s3usage.S3Usage{
+			Logs: s3usage.S3UploadMetrics{
+				PutRequests: 25,
+				UploadBytes: 8192,
+			},
+		}
+		resp := handler.Run(ctx)
+		assert.Equal(t, http.StatusOK, resp.Status())
+
+		dbTask, err := task.FindOneId(ctx, "t2")
+		require.NoError(t, err)
+		require.NotNil(t, dbTask)
+		assert.Equal(t, 0, dbTask.S3Usage.Artifacts.PutRequests)
+		assert.Equal(t, 25, dbTask.S3Usage.Logs.PutRequests)
+		assert.Equal(t, int64(8192), dbTask.S3Usage.Logs.UploadBytes)
 	})
 }
