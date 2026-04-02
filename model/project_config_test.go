@@ -9,8 +9,10 @@ import (
 )
 
 func TestCreateConfig(t *testing.T) {
-	assert.NoError(t, db.ClearCollections(ProjectConfigCollection))
-	projYml := `
+	require.NoError(t, db.ClearCollections(ProjectConfigCollection))
+
+	t.Run("TaskGroupWithInvalidCreateTimeYieldsNilConfig", func(t *testing.T) {
+		projYml := `
 task_groups:
 - name: task_group_name
   setup_task:
@@ -19,11 +21,13 @@ task_groups:
       script: "echo hi"
 create_time: 2022-12-15T17:18:32Z
 `
-	pc, err := CreateProjectConfig([]byte(projYml), "")
-	assert.NoError(t, err)
-	assert.Nil(t, pc)
+		pc, err := CreateProjectConfig([]byte(projYml), "")
+		assert.NoError(t, err)
+		assert.Nil(t, pc)
+	})
 
-	projYml = `
+	t.Run("ParsesBuildBaronSettingsAndGithubPRAliases", func(t *testing.T) {
+		projYml := `
 task_groups:
 - name: task_group_name
   setup_task:
@@ -40,14 +44,16 @@ github_pr_aliases:
     task: ".*"
 
 `
-	pc, err = CreateProjectConfig([]byte(projYml), "")
-	assert.NoError(t, err)
-	assert.NotNil(t, pc)
-	assert.Equal(t, []string{"BF"}, pc.BuildBaronSettings.TicketSearchProjects)
-	assert.Equal(t, "BF", pc.BuildBaronSettings.TicketCreateProject)
-	assert.Equal(t, "Bug", pc.BuildBaronSettings.TicketCreateIssueType)
+		pc, err := CreateProjectConfig([]byte(projYml), "")
+		assert.NoError(t, err)
+		require.NotNil(t, pc)
+		assert.Equal(t, []string{"BF"}, pc.BuildBaronSettings.TicketSearchProjects)
+		assert.Equal(t, "BF", pc.BuildBaronSettings.TicketCreateProject)
+		assert.Equal(t, "Bug", pc.BuildBaronSettings.TicketCreateIssueType)
+	})
 
-	projYml = `
+	t.Run("ParsesPatchTriggerAliasWithProjectAndTaskSpecifiers", func(t *testing.T) {
+		projYml := `
 patch_trigger_aliases:
   - alias: downstream-trigger
     child_project: my-downstream-project
@@ -59,24 +65,26 @@ patch_trigger_aliases:
     parent_as_module: my-module
     downstream_revision: abc123
 `
-	pc, err = CreateProjectConfig([]byte(projYml), "my-project")
-	require.NoError(t, err)
-	require.NotNil(t, pc)
-	assert.Equal(t, "my-project", pc.Project)
-	require.Len(t, pc.PatchTriggerAliases, 1)
-	pta := pc.PatchTriggerAliases[0]
-	assert.Equal(t, "downstream-trigger", pta.Alias)
-	assert.Equal(t, "my-downstream-project", pta.ChildProject)
-	assert.Equal(t, "success", pta.Status)
-	assert.Equal(t, "my-module", pta.ParentAsModule)
-	assert.Equal(t, "abc123", pta.DownstreamRevision)
-	require.Len(t, pta.TaskSpecifiers, 2)
-	assert.Equal(t, "my-patch-alias", pta.TaskSpecifiers[0].PatchAlias)
-	assert.Empty(t, pta.TaskSpecifiers[0].TaskRegex)
-	assert.Equal(t, "^lint.*", pta.TaskSpecifiers[1].TaskRegex)
-	assert.Equal(t, "^ubuntu", pta.TaskSpecifiers[1].VariantRegex)
+		pc, err := CreateProjectConfig([]byte(projYml), "my-project")
+		require.NoError(t, err)
+		require.NotNil(t, pc)
+		assert.Equal(t, "my-project", pc.Project)
+		require.Len(t, pc.PatchTriggerAliases, 1)
+		pta := pc.PatchTriggerAliases[0]
+		assert.Equal(t, "downstream-trigger", pta.Alias)
+		assert.Equal(t, "my-downstream-project", pta.ChildProject)
+		assert.Equal(t, "success", pta.Status)
+		assert.Equal(t, "my-module", pta.ParentAsModule)
+		assert.Equal(t, "abc123", pta.DownstreamRevision)
+		require.Len(t, pta.TaskSpecifiers, 2)
+		assert.Equal(t, "my-patch-alias", pta.TaskSpecifiers[0].PatchAlias)
+		assert.Empty(t, pta.TaskSpecifiers[0].TaskRegex)
+		assert.Equal(t, "^lint.*", pta.TaskSpecifiers[1].TaskRegex)
+		assert.Equal(t, "^ubuntu", pta.TaskSpecifiers[1].VariantRegex)
+	})
 
-	projYml = `
+	t.Run("ParsesMultiplePatchTriggerAliases", func(t *testing.T) {
+		projYml := `
 patch_trigger_aliases:
   - alias: trigger1
     child_project: project-a
@@ -89,13 +97,14 @@ patch_trigger_aliases:
       - task_regex: ".*"
         variant_regex: ".*"
 `
-	pc, err = CreateProjectConfig([]byte(projYml), "")
-	require.NoError(t, err)
-	require.NotNil(t, pc)
-	require.Len(t, pc.PatchTriggerAliases, 2)
-	assert.Equal(t, "trigger1", pc.PatchTriggerAliases[0].Alias)
-	assert.Equal(t, "project-a", pc.PatchTriggerAliases[0].ChildProject)
-	assert.Equal(t, "trigger2", pc.PatchTriggerAliases[1].Alias)
-	assert.Equal(t, "project-b", pc.PatchTriggerAliases[1].ChildProject)
-	assert.Equal(t, "*", pc.PatchTriggerAliases[1].Status)
+		pc, err := CreateProjectConfig([]byte(projYml), "")
+		require.NoError(t, err)
+		require.NotNil(t, pc)
+		require.Len(t, pc.PatchTriggerAliases, 2)
+		assert.Equal(t, "trigger1", pc.PatchTriggerAliases[0].Alias)
+		assert.Equal(t, "project-a", pc.PatchTriggerAliases[0].ChildProject)
+		assert.Equal(t, "trigger2", pc.PatchTriggerAliases[1].Alias)
+		assert.Equal(t, "project-b", pc.PatchTriggerAliases[1].ChildProject)
+		assert.Equal(t, "*", pc.PatchTriggerAliases[1].Status)
+	})
 }
