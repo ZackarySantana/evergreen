@@ -329,7 +329,7 @@ func (j *patchIntentProcessor) finishPatch(ctx context.Context, patchDoc *patch.
 		return errors.Wrapf(validationCatcher.Resolve(), "invalid patched project config")
 	}
 	// Don't create patches for github PRs if the only changes are in ignored files.
-	if patchDoc.IsGithubPRPatch() && patchedProject.IgnoresAllFiles(patchDoc.FilesChanged()) {
+	if j.shouldProcessAsGitHubPRPatch(patchDoc) && patchedProject.IgnoresAllFiles(patchDoc.FilesChanged()) {
 		j.sendGitHubSuccessMessages(ctx, patchDoc, pref)
 		return nil
 	}
@@ -419,7 +419,7 @@ func (j *patchIntentProcessor) finishPatch(ctx context.Context, patchDoc *patch.
 		return errors.Wrap(err, "processing trigger aliases")
 	}
 
-	if patchDoc.IsGithubPRPatch() {
+	if j.shouldProcessAsGitHubPRPatch(patchDoc) {
 		numCheckRuns := patchedProject.GetNumCheckRunsFromVariantTasks(patchDoc.VariantsTasks)
 		if err := model.VerifyCheckRunLimit(numCheckRuns, j.env.Settings().GitHubCheckRun.CheckRunLimit, pref.HasGitHubAppAuth(ctx)); err != nil {
 			j.gitHubError = checkRunLimitExceeded
@@ -1426,6 +1426,10 @@ func (j *patchIntentProcessor) isUserAuthorized(ctx context.Context, patchDoc *p
 }
 
 func (j *patchIntentProcessor) sendGitHubErrorStatus(ctx context.Context, patchDoc *patch.Patch) {
+	if j.IntentType != patch.GithubIntentType && j.IntentType != patch.GithubMergeIntentType {
+		return
+	}
+
 	if j.IntentType == patch.GithubIntentType {
 		update := NewGithubStatusUpdateJobForProcessingError(
 			thirdparty.GithubStatusDefaultContext,
@@ -1450,15 +1454,16 @@ func (j *patchIntentProcessor) sendGitHubErrorStatus(ctx context.Context, patchD
 			update.Run(ctx)
 			j.AddError(update.Error())
 		}
-	} else {
-		j.AddError(errors.Errorf("unexpected intent type '%s'", j.IntentType))
-		return
 	}
 }
 
 // sendGitHubSuccessMessageForIgnoredVariants sends GitHub success messages for variants that were ignored
 // due to path filtering.
 func (j *patchIntentProcessor) sendGitHubSuccessMessageForIgnoredVariants(ctx context.Context, patchDoc *patch.Patch, ignoredVariants []string) {
+	if j.IntentType != patch.GithubIntentType && j.IntentType != patch.GithubMergeIntentType {
+		return
+	}
+
 	for _, variant := range ignoredVariants {
 		// Create a context that includes the variant name
 		variantContext := fmt.Sprintf("%s/%s", thirdparty.GithubStatusDefaultContext, variant)
@@ -1471,7 +1476,7 @@ func (j *patchIntentProcessor) sendGitHubSuccessMessageForIgnoredVariants(ctx co
 				patchDoc.GithubPatchData.HeadHash,
 				ignoredFilesForVariant,
 			)
-		} else if j.IntentType == patch.GithubMergeIntentType {
+		} else {
 			update = NewGithubStatusUpdateJobWithSuccessMessage(
 				variantContext,
 				patchDoc.GithubMergeData.Org,
@@ -1479,9 +1484,6 @@ func (j *patchIntentProcessor) sendGitHubSuccessMessageForIgnoredVariants(ctx co
 				patchDoc.GithubMergeData.HeadSHA,
 				ignoredFilesForVariant,
 			)
-		} else {
-			j.AddError(errors.Errorf("unexpected intent type '%s'", j.IntentType))
-			return
 		}
 		update.Run(ctx)
 		j.AddError(update.Error())
@@ -1491,6 +1493,10 @@ func (j *patchIntentProcessor) sendGitHubSuccessMessageForIgnoredVariants(ctx co
 // sendGitHubSuccessMessages sends a successful status to GitHub with the given message for all
 // Evergreen rules configured for the given project.
 func (j *patchIntentProcessor) sendGitHubSuccessMessages(ctx context.Context, patchDoc *patch.Patch, projectRef *model.ProjectRef) {
+	if j.IntentType != patch.GithubIntentType && j.IntentType != patch.GithubMergeIntentType {
+		return
+	}
+
 	rules := j.getEvergreenRulesForStatuses(ctx, patchDoc.GithubPatchData.BaseOwner, projectRef.Repo, projectRef.Branch)
 	for _, rule := range rules {
 		var update amboy.Job
@@ -1502,7 +1508,7 @@ func (j *patchIntentProcessor) sendGitHubSuccessMessages(ctx context.Context, pa
 				patchDoc.GithubPatchData.HeadHash,
 				ignoredFiles,
 			)
-		} else if j.IntentType == patch.GithubMergeIntentType {
+		} else {
 			update = NewGithubStatusUpdateJobWithSuccessMessage(
 				rule,
 				patchDoc.GithubMergeData.Org,
@@ -1510,9 +1516,6 @@ func (j *patchIntentProcessor) sendGitHubSuccessMessages(ctx context.Context, pa
 				patchDoc.GithubMergeData.HeadSHA,
 				ignoredFiles,
 			)
-		} else {
-			j.AddError(errors.Errorf("unexpected intent type '%s'", j.IntentType))
-			return
 		}
 		update.Run(ctx)
 		j.AddError(update.Error())
@@ -1610,10 +1613,18 @@ func (j *patchIntentProcessor) filterOutIgnoredVariants(ctx context.Context, pat
 	return ignoredVariants
 }
 
+// shouldProcessAsGitHubPRPatch reports whether this patch intent job should perform GitHub
+// PR-specific processing such as status updates, subscriptions, and path filtering. Trigger
+// child patches may carry GitHub PR metadata for agent checkout, but GitHub statuses are
+// managed by the parent patch intent.
+func (j *patchIntentProcessor) shouldProcessAsGitHubPRPatch(patchDoc *patch.Patch) bool {
+	return patchDoc.IsGithubPRPatch() && j.IntentType != patch.TriggerIntentType
+}
+
 // skipFilteringIgnoredVariants verifies that the patch should apply filtering, i.e. there are changed files,
 // this is a PR or merge queue patch, and path filtering for the merge queue is enabled.
 func (j *patchIntentProcessor) skipFilteringIgnoredVariants(ctx context.Context, patchDoc *patch.Patch, patchedProject *model.Project) bool {
-	if !patchDoc.IsGithubPRPatch() && !patchDoc.IsMergeQueuePatch() {
+	if !j.shouldProcessAsGitHubPRPatch(patchDoc) && !patchDoc.IsMergeQueuePatch() {
 		return true
 	}
 	if patchDoc.IsMergeQueuePatch() {

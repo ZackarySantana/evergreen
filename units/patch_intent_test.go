@@ -2379,3 +2379,104 @@ func (s *PatchIntentUnitsSuite) TestFilterOutIgnoredVariants() {
 		})
 	}
 }
+
+func TestShouldProcessAsGitHubPRPatch(t *testing.T) {
+	githubPatchData := thirdparty.GithubPatch{HeadOwner: "contributor"}
+
+	testCases := []struct {
+		name       string
+		intentType string
+		patchDoc   *patch.Patch
+		expected   bool
+	}{
+		{
+			name:       "GithubIntentWithPRMetadataShouldProcess",
+			intentType: patch.GithubIntentType,
+			patchDoc:   &patch.Patch{GithubPatchData: githubPatchData},
+			expected:   true,
+		},
+		{
+			name:       "TriggerIntentWithPRMetadataShouldNotProcess",
+			intentType: patch.TriggerIntentType,
+			patchDoc:   &patch.Patch{GithubPatchData: githubPatchData},
+			expected:   false,
+		},
+		{
+			name:       "GithubIntentWithoutPRMetadataShouldNotProcess",
+			intentType: patch.GithubIntentType,
+			patchDoc:   &patch.Patch{},
+			expected:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			j := &patchIntentProcessor{IntentType: tc.intentType}
+			assert.Equal(t, tc.expected, j.shouldProcessAsGitHubPRPatch(tc.patchDoc))
+		})
+	}
+}
+
+func TestSendGitHubSuccessMessageForIgnoredVariants(t *testing.T) {
+	ctx := t.Context()
+	githubPatchData := thirdparty.GithubPatch{
+		BaseOwner: "evergreen-ci",
+		BaseRepo:  "evergreen",
+		HeadOwner: "contributor",
+		HeadRepo:  "evergreen",
+		HeadHash:  "abc123",
+	}
+
+	t.Run("TriggerIntentShouldNotError", func(t *testing.T) {
+		j := &patchIntentProcessor{IntentType: patch.TriggerIntentType}
+		j.sendGitHubSuccessMessageForIgnoredVariants(ctx, &patch.Patch{GithubPatchData: githubPatchData}, []string{"ignored-variant"})
+		assert.NoError(t, j.Error())
+	})
+}
+
+func TestSkipFilteringIgnoredVariants(t *testing.T) {
+	ctx := t.Context()
+	githubPatchData := thirdparty.GithubPatch{HeadOwner: "contributor"}
+	project := &model.Project{
+		BuildVariants: model.BuildVariants{
+			{Name: "my-build-variant", Paths: []string{"frontend/**"}},
+		},
+	}
+
+	t.Run("TriggerIntentWithPRMetadataShouldSkipFiltering", func(t *testing.T) {
+		j := &patchIntentProcessor{IntentType: patch.TriggerIntentType}
+		assert.True(t, j.skipFilteringIgnoredVariants(ctx, &patch.Patch{GithubPatchData: githubPatchData}, project))
+	})
+
+	t.Run("GithubIntentWithPRMetadataShouldNotSkipFiltering", func(t *testing.T) {
+		j := &patchIntentProcessor{IntentType: patch.GithubIntentType}
+		patchDoc := &patch.Patch{
+			GithubPatchData: githubPatchData,
+			Patches: []patch.ModulePatch{{
+				PatchSet: patch.PatchSet{
+					Summary: []thirdparty.Summary{{Name: "src/foo.go", Additions: 1}},
+				},
+			}},
+		}
+		assert.False(t, j.skipFilteringIgnoredVariants(ctx, patchDoc, project))
+	})
+
+	t.Run("TriggerIntentWithPRMetadataShouldNotFilterVariants", func(t *testing.T) {
+		j := &patchIntentProcessor{IntentType: patch.TriggerIntentType}
+		patchDoc := &patch.Patch{
+			GithubPatchData: githubPatchData,
+			Patches: []patch.ModulePatch{{
+				PatchSet: patch.PatchSet{
+					Summary: []thirdparty.Summary{{Name: "src/foo.go", Additions: 1}},
+				},
+			}},
+			VariantsTasks: []patch.VariantTasks{{Variant: "my-build-variant", Tasks: []string{"my-task"}}},
+			BuildVariants: []string{"my-build-variant"},
+			Tasks:         []string{"my-task"},
+		}
+
+		ignoredVariants := j.filterOutIgnoredVariants(ctx, patchDoc, project)
+		assert.Empty(t, ignoredVariants)
+		assert.Len(t, patchDoc.VariantsTasks, 1)
+	})
+}
