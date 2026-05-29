@@ -1983,7 +1983,7 @@ func GetOAuthToken(ctx context.Context, doNotUseBrowser bool, opts ...dex.Client
 	logrus.SetOutput(io.Discard)
 
 	token, tokenPath, err := requestOAuthToken(ctx, baseOpts, loader, flow)
-	if err == nil && token != nil && token.Expiry.After(time.Now()) {
+	if err == nil && oauthTokenUsable(token) {
 		return token, tokenPath, nil
 	}
 
@@ -1991,20 +1991,20 @@ func GetOAuthToken(ctx context.Context, doNotUseBrowser bool, opts ...dex.Client
 		grip.Notice(ctx, "OAuth auth-code flow failed due to a port conflict; falling back to device code flow")
 		flow = oauthFlowDevice
 		token, tokenPath, err = requestOAuthToken(ctx, baseOpts, loader, flow)
-		if err == nil && token != nil && token.Expiry.After(time.Now()) {
+		if err == nil && oauthTokenUsable(token) {
 			return token, tokenPath, nil
 		}
 	}
 
 	if err != nil && isOAuthLockClaimedError(err) {
 		token, tokenPath, err = requestOAuthToken(ctx, baseOpts, loader, flow)
-		if err == nil && token != nil && token.Expiry.After(time.Now()) {
+		if err == nil && oauthTokenUsable(token) {
 			return token, tokenPath, nil
 		}
 	}
 
 	shouldRetry := false
-	if token != nil && token.Expiry.Before(time.Now()) {
+	if token != nil && !token.Valid() && token.RefreshToken == "" {
 		shouldRetry = true
 	} else if err != nil {
 		clientErrString := strings.ToLower(err.Error())
@@ -2133,9 +2133,16 @@ func (t *tokenLoaderWithoutRefresh) LoadToken(path string) (*oauth2.Token, error
 	if err != nil {
 		return nil, err
 	}
+	if token == nil {
+		return nil, nil
+	}
 	// Clear the refresh token to prevent the Dex client from trying to use it.
 	token.RefreshToken = ""
 	return token, nil
+}
+
+func oauthTokenUsable(token *oauth2.Token) bool {
+	return token != nil && token.Valid()
 }
 
 // removeStaleOAuthLockFile removes the lock file only if the owning process

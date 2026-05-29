@@ -142,6 +142,53 @@ func TestIsOAuthLockClaimedError(t *testing.T) {
 	})
 }
 
+func TestOAuthTokenUsable(t *testing.T) {
+	t.Run("ZeroExpiryShouldBeUsable", func(t *testing.T) {
+		assert.True(t, oauthTokenUsable(&oauth2.Token{AccessToken: "access"}))
+	})
+
+	t.Run("ExpiredTokenShouldNotBeUsable", func(t *testing.T) {
+		assert.False(t, oauthTokenUsable(&oauth2.Token{
+			AccessToken: "access",
+			Expiry:      time.Now().Add(-time.Hour),
+		}))
+	})
+}
+
+func TestTokenLoaderWithoutRefresh(t *testing.T) {
+	t.Run("LoadTokenShouldClearRefreshToken", func(t *testing.T) {
+		loader := &memoryTokenLoader{
+			token: &oauth2.Token{
+				AccessToken:  "access",
+				RefreshToken: "refresh",
+				Expiry:       time.Now().Add(-time.Minute),
+			},
+		}
+		withoutRefresh := &tokenLoaderWithoutRefresh{TokenLoader: loader}
+
+		token, err := withoutRefresh.LoadToken("token-path")
+		require.NoError(t, err)
+		require.NotNil(t, token)
+		assert.Empty(t, token.RefreshToken)
+	})
+}
+
+type memoryTokenLoader struct {
+	token *oauth2.Token
+}
+
+func (l *memoryTokenLoader) LoadToken(string) (*oauth2.Token, error) {
+	if l.token == nil {
+		return nil, os.ErrNotExist
+	}
+	tokenCopy := *l.token
+	return &tokenCopy, nil
+}
+
+func (l *memoryTokenLoader) SaveToken(string, *oauth2.Token) error { return nil }
+
+func (l *memoryTokenLoader) DeleteToken(string) error { return nil }
+
 func TestRemoveInvalidOAuthTokenCacheIfUnlocked(t *testing.T) {
 	t.Run("MissingTokenShouldReturnImmediately", func(t *testing.T) {
 		tmpDir := t.TempDir()

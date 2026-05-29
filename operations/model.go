@@ -125,10 +125,13 @@ type OAuth struct {
 
 // AccessTokenIfNotExpired returns the access token if it is not expired, otherwise it returns an empty string.
 func (oa *OAuth) AccessTokenIfNotExpired() string {
-	if oa == nil || oa.Expiry.Before(time.Now()) {
+	if oa == nil || oa.AccessToken == "" {
 		return ""
 	}
-	return oa.AccessToken
+	if oa.Expiry.After(time.Now()) {
+		return oa.AccessToken
+	}
+	return ""
 }
 
 // Client represents the data stored in the user's config file, by default
