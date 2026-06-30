@@ -92,7 +92,7 @@ func TestGetOrComputeTranslation(t *testing.T) {
 	t.Run("CoalescesConcurrentCallsLRUEnabled", func(t *testing.T) {
 		t.Cleanup(resetTranslationCacheForTesting)
 
-		entered := make(chan struct{})
+		entered := make(chan struct{}, 1)
 		release := make(chan struct{})
 		var computeCount atomic.Int64
 		compute := func() (*Project, error) {
@@ -132,7 +132,7 @@ func TestGetOrComputeTranslation(t *testing.T) {
 	t.Run("CoalescesConcurrentCallsLRUDisabled", func(t *testing.T) {
 		t.Cleanup(resetTranslationCacheForTesting)
 		// Singleflight coalesces concurrent calls even without the LRU cache.
-		entered := make(chan struct{})
+		entered := make(chan struct{}, 1)
 		release := make(chan struct{})
 		var computeCount atomic.Int64
 		compute := func() (*Project, error) {
@@ -173,7 +173,7 @@ func TestGetOrComputeTranslation(t *testing.T) {
 		t.Cleanup(resetTranslationCacheForTesting)
 		// All concurrent singleflight waiters receive the error when compute fails.
 		// The next sequential call must retry (singleflight does not cache errors).
-		entered := make(chan struct{})
+		entered := make(chan struct{}, 1)
 		release := make(chan struct{})
 		var computeCount atomic.Int64
 		compute := func() (*Project, error) {
